@@ -1,0 +1,23 @@
+[project]
+name = "micropki"
+version = "0.1.0"
+description = "MicroPKI - simple educational Public Key Infrastructure"
+requires-python = ">=3.9"
+dependencies = ["cryptography"]
+
+[project.scripts]
+micropki = "micropki.cli:main"
+
+# === ИСПРАВЛЕНИЕ ОШИБКИ ===
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["micropki*"]
+exclude = [
+    "secrets*",
+    "tests*",
+    "pki*",
+    "build*",
+    "dist*",
+    "__pycache__*",
+    "*.egg-info*"
+]
