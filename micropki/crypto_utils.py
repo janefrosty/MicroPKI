@@ -116,3 +116,66 @@ def ensure_pki_dirs(out_dir: str, logger):
     except OSError:
         logger.warning("Cannot set 0o700 on private/ (Windows OK)")
     return private_dir, certs_dir
+
+def load_pem_x509_certificate(path: str):
+    with open(path, "rb") as f:
+        data = f.read()
+    return x509.load_pem_x509_certificate(data)
+
+
+def build_csr(subject: x509.Name, private_key, extensions=None):
+    builder = x509.CertificateSigningRequestBuilder().subject_name(subject)
+    
+    if extensions:
+        for ext, critical in extensions:
+            builder = builder.add_extension(ext, critical=critical)
+    
+    return builder.sign(
+        private_key=private_key,
+        algorithm=hashes.SHA256() if isinstance(private_key, rsa.RSAPrivateKey) else hashes.SHA384()
+    )
+
+
+def sign_cert(builder: x509.CertificateBuilder, issuer_key, issuer_cert: x509.Certificate):
+    hash_alg = hashes.SHA256() if isinstance(issuer_key, rsa.RSAPrivateKey) else hashes.SHA384()
+    
+    return builder.sign(
+        private_key=issuer_key,
+        algorithm=hash_alg,
+        # issuer_cert используется только для AKI, но подпись от issuer_key
+    )
+
+def load_encrypted_private_key(path: str, passphrase_bytes: bytes):
+    with open(path, "rb") as f:
+        pem_data = f.read()
+    return serialization.load_pem_private_key(
+        pem_data,
+        password=passphrase_bytes
+    )
+
+
+def load_certificate(path: str):
+    with open(path, "rb") as f:
+        pem_data = f.read()
+    return x509.load_pem_x509_certificate(pem_data)
+
+def create_csr(subject_name: x509.Name, private_key, extensions=None):
+    builder = x509.CertificateSigningRequestBuilder().subject_name(subject_name)
+
+    if extensions:
+        for ext_val, critical in extensions:
+            builder = builder.add_extension(ext_val, critical=critical)
+
+    signing_hash = hashes.SHA256() if isinstance(private_key, rsa.RSAPrivateKey) else hashes.SHA384()
+
+    return builder.sign(
+        private_key=private_key,
+        algorithm=signing_hash
+    )
+
+
+def sign_cert(builder: x509.CertificateBuilder, signing_key, signing_hash):
+    return builder.sign(
+        private_key=signing_key,
+        algorithm=signing_hash
+    )
