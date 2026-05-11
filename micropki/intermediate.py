@@ -22,22 +22,17 @@ from .crypto_utils import (
 
 
 def issue_intermediate_ca(args, root_passphrase: bytes, inter_passphrase: bytes, logger):
-    """Выдача промежуточного CA-сертификата, подписанного Root CA"""
 
     logger.info("=== Выдача Intermediate CA ===")
 
-    # Загрузка Root CA
     root_key = load_encrypted_private_key(args.root_key, root_passphrase)
     root_cert = load_certificate(args.root_cert)
 
-    # Генерация ключа Intermediate
     key_size = args.key_size or (4096 if args.key_type == "rsa" else 384)
     inter_key = generate_key(args.key_type, key_size)
 
-    # Subject Intermediate
     subject = parse_dn(args.subject)
 
-    # CSR (с расширением BasicConstraints, если pathlen указан)
     extensions = []
     if args.pathlen is not None:
         bc = x509.BasicConstraints(ca=True, path_length=args.pathlen)
@@ -45,7 +40,6 @@ def issue_intermediate_ca(args, root_passphrase: bytes, inter_passphrase: bytes,
 
     csr = create_csr(subject, inter_key, extensions)
 
-    # Строим сертификат Intermediate
     serial = secrets.randbits(128)
     not_before = datetime.now(timezone.utc)
     not_after = not_before + timedelta(days=args.validity_days)
@@ -86,11 +80,9 @@ def issue_intermediate_ca(args, root_passphrase: bytes, inter_passphrase: bytes,
         )
     )
 
-    # Подпись сертификата ключом Root
     signing_hash = hashes.SHA256() if isinstance(root_key, rsa.RSAPrivateKey) else hashes.SHA384()
     inter_cert = sign_cert(builder, root_key, signing_hash)
 
-    # Сохранение файлов
     private_dir, certs_dir = ensure_pki_dirs(args.out_dir, logger)
     key_path = os.path.join(private_dir, "intermediate.key.pem")
     cert_path = os.path.join(certs_dir, "intermediate.cert.pem")
@@ -100,6 +92,10 @@ def issue_intermediate_ca(args, root_passphrase: bytes, inter_passphrase: bytes,
 
     save_encrypted_key(inter_key, inter_passphrase, key_path)
     save_cert(inter_cert, cert_path)
+
+    from .database import save_cert_to_db, get_db_path
+    db_path = get_db_path(args.out_dir)
+    save_cert_to_db(inter_cert, str(root_cert.subject), db_path, logger)
 
     logger.info("Intermediate CA успешно создан")
     logger.info(f"Приватный ключ: {key_path}")

@@ -12,3 +12,4 @@ ENV/
 *.log
 pki/
 secrets/
+./pki/micropki.db

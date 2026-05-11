@@ -179,3 +179,6 @@ def sign_cert(builder: x509.CertificateBuilder, signing_key, signing_hash):
         private_key=signing_key,
         algorithm=signing_hash
     )
+
+def get_serial_from_cert(cert) -> int:
+    return cert.serial_number
