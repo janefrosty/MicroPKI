@@ -6,9 +6,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 
 from .database import get_db_connection, get_db_path
 from .crypto_utils import load_encrypted_private_key, load_certificate
+from .audit import AuditLogger
 
-
-def generate_crl(args, ca_key, ca_cert, logger):
+def generate_crl(args, ca_key, ca_cert, logger, audit_logger: AuditLogger):
+    audit_logger.log('AUDIT', 'generate_crl', 'start', 'Генерация CRL', {})
     builder = x509.CertificateRevocationListBuilder()
     builder = builder.issuer_name(ca_cert.subject)
     builder = builder.last_update(datetime.now(timezone.utc))
@@ -31,6 +32,7 @@ def generate_crl(args, ca_key, ca_cert, logger):
         10: x509.ReasonFlags.aa_compromise,
     }
 
+    revoked_count = 0
     for row in cursor.fetchall():
         serial = int(row['serial_hex'], 16)
         revoked_date = datetime.fromisoformat(row['revoked_at'])
@@ -45,6 +47,7 @@ def generate_crl(args, ca_key, ca_cert, logger):
                 x509.CRLReason(reason_map[reason_code]), critical=False)
 
         builder = builder.add_revoked_certificate(revoked_builder.build())
+        revoked_count += 1
 
     crl = builder.sign(private_key=ca_key, algorithm=hashes.SHA256())
 
@@ -55,5 +58,8 @@ def generate_crl(args, ca_key, ca_cert, logger):
     with open(crl_path, "wb") as f:
         f.write(crl.public_bytes(serialization.Encoding.PEM))
 
-    logger.info(f"CRL generated: {crl_path}")
+    logger.info(f"CRL сгенерирован: {crl_path} (отозванных сертификатов: {revoked_count})")
+    audit_logger.log('AUDIT', 'generate_crl', 'success', 'CRL сгенерирован', {
+        'path': crl_path, 'revoked_count': revoked_count
+    })
     return crl_path

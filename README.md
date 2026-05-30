@@ -216,6 +216,43 @@ micropki client gen-csr --subject "CN=test.example.com" --san "dns:test.example.
 micropki ca issue-cert-from-csr --csr ./pki/certs/client.csr.pem --ca-passphrase-file .\secrets\ca.pass
 ```
 
+## Usage Sprint 7
+
+```Powershell
+# 1. Инициализация базы данных
+micropki db init --out-dir ./pki
+
+# 2. Выпуск сертификата с проверкой политик и записью в аудит/CT‑лог
+micropki ca issue-cert --template server --subject "/CN=test.example.com" --san "dns:test.example.com" --ca-passphrase-file secrets\ca.pass --out-dir ./pki --validity-days 365 --force
+
+#3. Просмотр аудит-лога (фильтрация по операции)
+micropki audit query --operation issue_cert --format table
+
+#4. Просмотр CT-лога (симуляция Certificate Transparency)
+Get-Content .\pki\audit\ct.log
+
+#5. Отзыв сертификата с фиксацией в аудите
+micropki ca revoke --serial AF58C5EBCA40DBD3066D62A73272616F --reason 1 --out-dir ./pki
+
+#6. Генерация CRL (Certificate Revocation List)
+micropki ca generate-crl --ca-passphrase-file secrets\ca.pass --out-dir ./pki
+
+#7. Проверка целостности аудит-лога (хеш-цепочка)
+micropki audit verify
+
+#8. Компрометация ключа (отзыв + занесение в чёрный список)
+# Предварительно узнаем точное имя файла сертификата
+dir .\pki\certs\
+# Затем выполняем компрометацию (пример)
+micropki ca compromise --cert .\pki\certs\test.example.com.cert.pem --ca-passphrase-file secrets\ca.pass --out-dir ./pki --force
+
+#9. Выпуск OCSP responder сертификата (необходим для OCSP-сервера)
+micropki ca issue-ocsp-cert --subject "/CN=OCSP Responder" --ca-passphrase-file secrets\ca.pass --out-dir ./pki --force
+
+#10. Запуск OCSP responder с ограничением частоты запросов
+micropki ca serve-ocsp --port 8080 --rate-limit 2 --rate-burst 3
+```
+
 
 ## Tests
 ```PowerShell

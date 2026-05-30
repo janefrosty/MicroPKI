@@ -1,17 +1,20 @@
 import http.server
 import socketserver
-import ssl
 from urllib.parse import urlparse
-
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.ocsp import OCSPResponseBuilder, OCSPRequest
-
 from .database import get_db_connection, get_db_path
-
+from .ratelimit import RateLimit
 
 class OCSPHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        # Rate limiting check
+        client_ip = self.client_address[0]
+        if not self.server.rate_limiter.check(client_ip):
+            self.send_error(429, "Too Many Requests")
+            return
+
         if self.path != "/":
             self.send_error(404)
             return
@@ -56,16 +59,24 @@ class OCSPHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             self.send_error(400, "Malformed OCSP request")
 
-
-def serve_ocsp(args, logger):
+def serve_ocsp(args, logger, audit_logger):
+    limiter = RateLimit(args.rate_limit, args.rate_burst) if hasattr(args, 'rate_limit') else RateLimit(0, 10)
     with open(args.responder_cert, "rb") as f:
         responder_cert = x509.load_pem_x509_certificate(f.read())
     with open(args.responder_key, "rb") as f:
         responder_key = serialization.load_pem_private_key(f.read(), password=None)
 
     handler = OCSPHandler
-    handler.server = type('Server', (), {'responder_cert': responder_cert, 'responder_key': responder_key})()
+    handler.server = type('Server', (), {
+        'responder_cert': responder_cert,
+        'responder_key': responder_key,
+        'rate_limiter': limiter
+    })()
 
     with socketserver.TCPServer((args.host, args.port), handler) as httpd:
-        logger.info(f"OCSP responder started on http://{args.host}:{args.port}")
-        httpd.serve_forever()
+        logger.info(f"OCSP responder запущен на http://{args.host}:{args.port}")
+        audit_logger.log('AUDIT', 'ocsp_serve', 'start', 'OCSP responder запущен', {})
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            audit_logger.log('AUDIT', 'ocsp_serve', 'stop', 'OCSP responder остановлен', {})

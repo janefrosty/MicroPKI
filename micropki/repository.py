@@ -3,7 +3,7 @@ import sqlite3
 from tabulate import tabulate
 
 from .database import get_db_connection
-
+from .audit import AuditLogger
 
 def list_certs(db_path: str, status: str = "valid", output_format: str = "table", logger=None):
     conn = get_db_connection(db_path)
@@ -80,10 +80,18 @@ def show_cert(db_path: str, serial_hex: str, logger):
     print("\n--- PEM Certificate ---")
     print(row['pem'])
 
-def revoke_cert(db_path: str, serial_hex: str, reason: int, logger):
+def revoke_cert(db_path: str, serial_hex: str, reason: int, logger, audit_logger: AuditLogger) -> bool:
     conn = get_db_connection(db_path)
     cursor = conn.cursor()
     now = datetime.now(timezone.utc).isoformat()
+
+    # Для аудита: получаем информацию о сертификате до отзыва
+    cursor.execute("SELECT subject FROM certificates WHERE serial_hex = ?", (serial_hex.upper(),))
+    row = cursor.fetchone()
+    if not row:
+        logger.error(f"Сертификат {serial_hex} не найден")
+        audit_logger.log('AUDIT', 'revoke', 'failure', 'Сертификат не найден', {'serial': serial_hex})
+        return False
 
     cursor.execute("""
         UPDATE certificates 
@@ -94,12 +102,15 @@ def revoke_cert(db_path: str, serial_hex: str, reason: int, logger):
     """, (now, reason, serial_hex.upper()))
 
     if cursor.rowcount == 0:
-        logger.error(f"Certificate {serial_hex} not found or already revoked")
+        logger.error(f"Сертификат {serial_hex} не найден или уже отозван")
+        audit_logger.log('AUDIT', 'revoke', 'failure', 'Сертификат уже отозван или не найден', {'serial': serial_hex})
         conn.close()
         return False
 
     conn.commit()
     conn.close()
-    logger.info(f"Certificate {serial_hex} revoked successfully")
+    logger.info(f"Сертификат {serial_hex} успешно отозван")
+    audit_logger.log('AUDIT', 'revoke', 'success', 'Сертификат отозван', {
+        'serial': serial_hex, 'reason': reason, 'subject': row['subject']
+    })
     return True
-
