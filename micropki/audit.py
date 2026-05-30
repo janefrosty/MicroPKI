@@ -56,31 +56,40 @@ class AuditLogger:
             return True
         prev_hash = '0' * 64
         with open(self.log_path, 'r') as f:
-            for line in f:
-                if not line.strip():
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
                     continue
-                entry = json.loads(line)
-                # Проверка ссылки на предыдущий хеш
-                if entry['integrity']['prev_hash'] != prev_hash:
-                    print(f"Ошибка цепочки: несоответствие prev_hash в записи {entry['timestamp']}")
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    print(f"Ошибка JSON в строке {line_num}")
                     return False
-                
-                # Проверка хеша текущей записи
+
+                # Проверка ссылки на предыдущий хеш
+                if entry.get('integrity', {}).get('prev_hash') != prev_hash:
+                    print(f"Ошибка цепочки в строке {line_num}: prev_hash не совпадает")
+                    return False
+
+                # Пересчёт хеша текущей записи (временно убираем поле hash)
                 entry_copy = entry.copy()
+                entry_copy['integrity'] = entry_copy.get('integrity', {}).copy()
                 entry_copy['integrity']['hash'] = ''
                 json_str = json.dumps(entry_copy, separators=(',', ':'), sort_keys=True)
                 computed_hash = hashlib.sha256(json_str.encode()).hexdigest()
+
                 if computed_hash != entry['integrity']['hash']:
-                    print(f"Ошибка целостности: хеш записи {entry['timestamp']} не совпадает.")
+                    print(f"Ошибка целостности в строке {line_num}: хеш не совпадает")
                     return False
+
                 prev_hash = entry['integrity']['hash']
-        
+
         # Проверка последнего хеша с chain.dat
         with open(self.chain_path, 'r') as f:
             stored_last = f.read().strip()
         if stored_last != prev_hash:
-            print("Ошибка целостности: последний хеш в chain.dat не совпадает.")
+            print("Ошибка: последний хеш в chain.dat не совпадает")
             return False
-        
+
         print("Цепочка аудит-лога проверена и не содержит ошибок.")
         return True
