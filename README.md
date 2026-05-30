@@ -10,6 +10,7 @@ Minimal educational Public Key Infrastructure (Python).
 - **Sprint 4** — Отзыв сертификатов (`revoke`) + генерация CRL
 - **Sprint 5** — OCSP Responder
 - **Sprint 6** — Работа с CSR (client gen-csr + issue-cert-from-csr)
+- **Sprint 7** — Security Hardening: Audit, Policies, CT Log, Rate Limiting & Key Compromise
 
 ## Build & Install
 ```powershell
@@ -256,11 +257,8 @@ micropki ca serve-ocsp --port 8080 --rate-limit 2 --rate-burst 3
 
 ## Tests
 ```PowerShell
-# Посмотреть сертификат
-openssl x509 -in ./pki/certs/ca.cert.pem -text -noout | Select-Object -First 30
-
-# Проверить цепочку (после Sprint 3)
-openssl verify -CAfile ./pki/certs/ca.cert.pem ./issued/certs/web_example_com.cert.pem
+pip install pytest
+python -m pytest tests/ -v
 ```
 
 ## Dependencies
